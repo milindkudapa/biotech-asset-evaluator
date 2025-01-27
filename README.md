@@ -10,7 +10,7 @@ An intelligent agent that evaluates biotech drug assets and their developer comp
   - PubMed for scientific literature
   - Exa.ai for company information
   - Tavily for licensing deals and investments
-- LLM-powered analysis using OpenAI GPT-4
+- LLM-powered analysis using OpenAI GPT-4o
 - Structured JSON reports with comprehensive insights
 - FastAPI-based REST API
 
