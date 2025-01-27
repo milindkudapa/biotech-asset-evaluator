@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Disable SSL verification warnings
@@ -39,7 +39,6 @@ class ClinicalTrialsClient:
         }
         # Create SSL context with system certificates
         self.ssl_context = ssl.create_default_context(cafile=certifi.where())
-        logger.debug(f"Initialized ClinicalTrialsClient with headers: {self.headers}")
         
     async def search_trials(self, drug_name: str) -> List[Dict[str, Any]]:
         params = {
@@ -47,34 +46,25 @@ class ClinicalTrialsClient:
             "pageSize": 3,
             "format": "json"
         }
-        logger.debug(f"Searching trials for drug: {drug_name} with params: {params}")
         
         try:
-            logger.debug("Creating HTTP client...")
             transport = httpx.AsyncHTTPTransport(verify=self.ssl_context)
             async with httpx.AsyncClient(transport=transport, follow_redirects=True, headers=self.headers, timeout=30.0) as client:
-                logger.debug(f"Making GET request to {self.BASE_URL}")
                 response = await client.get(self.BASE_URL, params=params)
-                logger.debug(f"Response status code: {response.status_code}")
-                logger.debug(f"Response headers: {response.headers}")
                 
                 if response.status_code == 403:
                     logger.error("Received 403 Forbidden - This may be due to rate limiting or invalid credentials")
                     return []
                     
                 response.raise_for_status()
-                logger.debug("Response successful")
                 
                 try:
                     data = response.json()
-                    logger.debug(f"Parsed JSON response: {json.dumps(data, indent=2)}")
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse JSON response: {e}")
-                    logger.debug(f"Raw response content: {response.text}")
                     return []
                 
                 studies = data.get("studies", [])
-                logger.debug(f"Found {len(studies)} studies")
                 
                 results = [
                     {
@@ -87,7 +77,6 @@ class ClinicalTrialsClient:
                     }
                     for study in studies
                 ]
-                logger.debug(f"Processed {len(results)} trial results")
                 return results
                 
         except httpx.HTTPError as e:
