@@ -70,7 +70,7 @@ class BiotechEvaluationWorkflow:
             messages[1]["content"] = messages[1]["content"][:int(len(messages[1]["content"]) * reduction_factor)]
         
         response = await self.client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-2024-11-20",
             messages=messages,
             temperature=0,
             seed=42,
@@ -194,7 +194,20 @@ class BiotechEvaluationWorkflow:
         system_prompt = """You are a clinical trial analyst with expertise in biotech.
         Focus on trial phases, outcomes, and regulatory implications.
         Format your response as JSON with 'ongoing_trials', 'completed_trials', and 'regulatory_updates' fields.
-        For each trial, include a 'phase' field as a string (e.g. 'PHASE1', 'PHASE2', 'PHASE3', 'PHASE4', or 'NA')."""
+        
+        For each trial in both ongoing_trials and completed_trials, include:
+        - 'nct_id': string (required)
+        - 'title': string (required)
+        - 'phase': string (one of: 'PHASE1', 'PHASE2', 'PHASE3', 'PHASE4', 'NA')
+        - 'status': string (one of: 'COMPLETED', 'ONGOING', 'RECRUITING', 'TERMINATED', 'SUSPENDED', 'WITHDRAWN')
+        - 'conditions': list of strings
+        - 'description': string
+        
+        For each regulatory_update, include:
+        - 'date': string (YYYY-MM-DD format, e.g. '2024-01-01')
+        - 'agency': string (one of: 'FDA', 'EMA', 'MHRA', 'OTHER')
+        - 'type': string (one of: 'APPROVAL', 'REJECTION', 'HOLD', 'UPDATE')
+        - 'description': string"""
         
         data_str = json.dumps(trials_data)
         chunks = self._chunk_text(data_str)
@@ -211,11 +224,49 @@ class BiotechEvaluationWorkflow:
                 if key in result:
                     items = result[key] if isinstance(result[key], list) else [result[key]]
                     for item in items:
-                        if isinstance(item, dict) and 'phase' in item:
-                            # Convert phase to string if it's a list
-                            if isinstance(item['phase'], list):
-                                item['phase'] = item['phase'][0] if item['phase'] else 'NA'
-                    merged_result[key].extend(items)
+                        if isinstance(item, dict):
+                            if key in ["ongoing_trials", "completed_trials"]:
+                                # Process trial data
+                                processed_item = {
+                                    "nct_id": str(item.get("nct_id", "Not available")),
+                                    "title": str(item.get("title", "Not available")),
+                                    "phase": str(item.get("phase", "NA")),
+                                    "status": str(item.get("status", "Not available")).upper(),
+                                    "conditions": [str(c) for c in item.get("conditions", [])] if isinstance(item.get("conditions"), list) else [],
+                                    "description": str(item.get("description", "Not available"))
+                                }
+                                merged_result[key].append(processed_item)
+                            elif key == "regulatory_updates":
+                                # Process regulatory updates with required fields
+                                date_str = item.get("date", "2024-01-01")
+                                # Ensure date format is YYYY-MM-DD
+                                if not isinstance(date_str, str) or not date_str.count("-") == 2:
+                                    date_str = "2024-01-01"
+                                
+                                agency = str(item.get("agency", "FDA")).upper()
+                                if agency not in ["FDA", "EMA", "MHRA"]:
+                                    agency = "OTHER"
+                                    
+                                update_type = str(item.get("type", "UPDATE")).upper()
+                                if update_type not in ["APPROVAL", "REJECTION", "HOLD", "UPDATE"]:
+                                    update_type = "UPDATE"
+                                
+                                processed_item = {
+                                    "date": date_str,
+                                    "agency": agency,
+                                    "type": update_type,
+                                    "description": str(item.get("description", "Not available"))
+                                }
+                                merged_result[key].append(processed_item)
+        
+        # If no regulatory updates found, add a default one
+        if not merged_result["regulatory_updates"]:
+            merged_result["regulatory_updates"] = [{
+                "date": "2024-01-01",
+                "agency": "FDA",
+                "type": "UPDATE",
+                "description": "No regulatory updates available at this time."
+            }]
         
         return merged_result
         
@@ -225,23 +276,23 @@ class BiotechEvaluationWorkflow:
         Focus on company valuation, funding rounds, and market position.
         Format your response as JSON with the following structure:
         {
-            "ownership_type": "string",
-            "funding": "string",
-            "revenue": "string",
+            "ownership_type": string (one of: "PUBLIC", "PRIVATE", "SUBSIDIARY", "Not available"),
+            "funding": string,
+            "revenue": string,
             "licensing_deals": [
                 {
-                    "date": "YYYY-MM-DD",
-                    "parties": ["company1", "company2"],
-                    "description": "string",
-                    "value": float or null  # Must be a number or null, not a string
+                    "date": string (YYYY-MM-DD format preferred),
+                    "parties": list of strings,
+                    "description": string,
+                    "value": number or null (must be a valid float or null)
                 }
             ],
             "disclosed_investments": [
                 {
-                    "date": "YYYY-MM-DD",
-                    "amount": float,  # Must be a number, not a string
-                    "type": "string",
-                    "investor": "string"  # Single investor string, not a list
+                    "date": string (YYYY-MM-DD format preferred),
+                    "amount": number (must be a valid float),
+                    "type": string,
+                    "investor": string
                 }
             ]
         }"""
@@ -266,37 +317,32 @@ class BiotechEvaluationWorkflow:
                 for deal in result["licensing_deals"]:
                     if not isinstance(deal, dict):
                         continue
-                    # Convert string values to numbers or null
-                    try:
-                        if "value" in deal:
-                            value_str = deal["value"]
-                            if isinstance(value_str, str):
-                                # Extract numeric value from string
-                                value_str = value_str.replace("$", "").replace(",", "")
-                                if "million" in value_str.lower():
-                                    value_str = value_str.lower().replace("million", "").strip()
-                                    value = float(value_str) * 1_000_000
-                                elif "billion" in value_str.lower():
-                                    value_str = value_str.lower().replace("billion", "").strip()
-                                    value = float(value_str) * 1_000_000_000
-                                else:
-                                    value = float(value_str)
-                                deal["value"] = value
-                            elif not isinstance(value_str, (int, float)):
-                                deal["value"] = None
-                    except (ValueError, TypeError):
-                        deal["value"] = None
                     
-                    # Ensure required fields
-                    deal["date"] = deal.get("date", "Not specified")
-                    deal["parties"] = deal.get("parties", ["Unknown"])
-                    deal["description"] = deal.get("description", "Not available")
-                    processed_deals.append(deal)
+                    # Process value field
+                    value = None
+                    if "value" in deal:
+                        try:
+                            value_str = str(deal["value"]).lower()
+                            value_str = value_str.replace("$", "").replace(",", "")
+                            if "million" in value_str:
+                                value = float(value_str.replace("million", "").strip()) * 1_000_000
+                            elif "billion" in value_str:
+                                value = float(value_str.replace("billion", "").strip()) * 1_000_000_000
+                            else:
+                                value = float(value_str)
+                        except (ValueError, TypeError):
+                            value = None
+                    
+                    processed_deal = {
+                        "date": str(deal.get("date", "Not specified")),
+                        "parties": [str(p) for p in deal.get("parties", ["Unknown"])] if isinstance(deal.get("parties"), list) else ["Unknown"],
+                        "description": str(deal.get("description", "Not available")),
+                        "value": value
+                    }
+                    processed_deals.append(processed_deal)
                 result["licensing_deals"] = processed_deals
-        else:
-            result["licensing_deals"] = []
-            
-        # Process disclosed investments
+        
+        # Process investments
         if "disclosed_investments" in result:
             if not isinstance(result["disclosed_investments"], list):
                 result["disclosed_investments"] = []
@@ -305,41 +351,39 @@ class BiotechEvaluationWorkflow:
                 for inv in result["disclosed_investments"]:
                     if not isinstance(inv, dict):
                         continue
-                    try:
-                        # Convert amount to float
-                        if "amount" in inv:
-                            amount_str = inv["amount"]
-                            if isinstance(amount_str, str):
-                                # Extract numeric value from string
-                                amount_str = amount_str.replace("$", "").replace(",", "")
-                                if "million" in amount_str.lower():
-                                    amount_str = amount_str.lower().replace("million", "").strip()
-                                    amount = float(amount_str) * 1_000_000
-                                elif "billion" in amount_str.lower():
-                                    amount_str = amount_str.lower().replace("billion", "").strip()
-                                    amount = float(amount_str) * 1_000_000_000
-                                else:
-                                    amount = float(amount_str)
-                                inv["amount"] = amount
-                        
-                        # Convert investors list to single investor string
-                        if "investors" in inv:
-                            inv["investor"] = inv["investors"][0] if inv["investors"] else "Unknown"
-                            del inv["investors"]
-                        elif "investor" not in inv:
-                            inv["investor"] = "Unknown"
-                            
-                        # Ensure required fields
-                        inv["date"] = inv.get("date", "Not specified")
-                        inv["type"] = inv.get("type", "Not specified")
-                        processed_investments.append(inv)
-                    except (ValueError, TypeError, IndexError):
-                        continue
+                    
+                    # Process amount field
+                    amount = 0.0
+                    if "amount" in inv:
+                        try:
+                            amount_str = str(inv["amount"]).lower()
+                            amount_str = amount_str.replace("$", "").replace(",", "")
+                            if "million" in amount_str:
+                                amount = float(amount_str.replace("million", "").strip()) * 1_000_000
+                            elif "billion" in amount_str:
+                                amount = float(amount_str.replace("billion", "").strip()) * 1_000_000_000
+                            else:
+                                amount = float(amount_str)
+                        except (ValueError, TypeError):
+                            amount = 0.0
+                    
+                    processed_investment = {
+                        "date": str(inv.get("date", "Not specified")),
+                        "amount": amount,
+                        "type": str(inv.get("type", "Not specified")),
+                        "investor": str(inv.get("investor", inv.get("investors", ["Unknown"])[0] if isinstance(inv.get("investors"), list) else "Unknown"))
+                    }
+                    processed_investments.append(processed_investment)
                 result["disclosed_investments"] = processed_investments
-        else:
-            result["disclosed_investments"] = []
-            
-        return result
+        
+        # Ensure all required fields with proper types
+        return {
+            "ownership_type": str(result.get("ownership_type", "Not available")).upper(),
+            "funding": str(result.get("funding", "Not available")),
+            "revenue": str(result.get("revenue", "Not available")),
+            "licensing_deals": result.get("licensing_deals", []),
+            "disclosed_investments": result.get("disclosed_investments", [])
+        }
         
     async def generate_overview(self, drug_name: str, moa_data: Dict[str, str], clinical_data: Dict[str, List]) -> Dict[str, str]:
         """Generate overview using LLM."""

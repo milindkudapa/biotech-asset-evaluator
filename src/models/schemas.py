@@ -1,56 +1,74 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field
-
-class Overview(BaseModel):
-    description: str = Field(..., description="Brief description of the drug asset and its context")
-
-class MechanismOfAction(BaseModel):
-    target_pathways: str = Field(..., description="Details of the target pathways")
-    biology: str = Field(..., description="Related biological mechanisms")
+from datetime import date
+from pydantic import BaseModel, Field, constr, confloat
 
 class ClinicalTrial(BaseModel):
-    nct_id: str = Field(..., description="ClinicalTrials.gov identifier")
-    phase: str = Field(..., description="Trial phase")
-    status: str = Field(..., description="Current status of the trial")
-    title: str = Field(..., description="Title of the trial")
-    conditions: List[str] = Field(default_factory=list, description="Conditions being studied")
-    completion_date: Optional[str] = Field(None, description="Expected or actual completion date")
-    results: Optional[str] = Field(None, description="Summary of results if available")
+    """Model for a clinical trial."""
+    nct_id: str = Field(default="No trial ID available")
+    title: str = Field(default="No trial title available")
+    phase: str = Field(default="Phase unknown")
+    status: str = Field(default="Status unknown")
+    conditions: List[str] = Field(default_factory=lambda: ["No conditions specified"])
+    description: str = Field(default="No trial description available")
 
 class RegulatoryUpdate(BaseModel):
-    date: str = Field(..., description="Date of the update")
-    agency: str = Field(..., description="Regulatory agency (e.g., FDA, EMA)")
-    type: str = Field(..., description="Type of update (e.g., approval, fast track)")
-    description: str = Field(..., description="Details of the regulatory update")
-
-class ClinicalActivity(BaseModel):
-    ongoing_trials: List[ClinicalTrial] = Field(default_factory=list)
-    completed_trials: List[ClinicalTrial] = Field(default_factory=list)
-    regulatory_updates: List[RegulatoryUpdate] = Field(default_factory=list)
+    """Model for a regulatory update."""
+    date: str = Field(
+        default=date.today().strftime("%Y-%m-%d"),
+        pattern=r"^\d{4}-\d{2}-\d{2}$"  # Enforce YYYY-MM-DD format
+    )
+    agency: str = Field(default="No regulatory agency specified")
+    type: str = Field(default="No update type specified")
+    description: str = Field(default="No regulatory updates found for this asset")
 
 class LicensingDeal(BaseModel):
-    date: str = Field(..., description="Date of the deal")
-    parties: List[str] = Field(..., description="Companies involved in the deal")
-    value: Optional[float] = Field(None, description="Total value of the deal in USD")
-    description: str = Field(..., description="Details of the licensing deal")
+    """Model for a licensing deal."""
+    date: str = Field(default="Date not disclosed")
+    parties: List[str] = Field(default_factory=lambda: ["Parties not disclosed"])
+    description: str = Field(default="No licensing deal details available")
+    value: Optional[float] = Field(default=None, description="Deal value in USD")
 
 class Investment(BaseModel):
-    date: str = Field(..., description="Date of investment")
-    investor: str = Field(..., description="Name of investor")
-    amount: Optional[float] = Field(None, description="Investment amount in USD")
-    type: str = Field(..., description="Type of investment (e.g., Series A, IPO)")
+    """Model for an investment."""
+    date: str = Field(default="Date not disclosed")
+    amount: float = Field(default=0.0, description="Investment amount in USD")
+    type: str = Field(default="Investment type not specified")
+    investor: str = Field(default="Investor not disclosed")
+
+class Overview(BaseModel):
+    """Model for the drug overview."""
+    description: str = Field(default="No overview available for this asset")
+
+class MechanismOfAction(BaseModel):
+    """Model for mechanism of action details."""
+    target_pathways: str = Field(default="Target pathways not identified")
+    biology: str = Field(default="Biological mechanism not described")
+
+class ClinicalActivity(BaseModel):
+    """Model for clinical trial activity."""
+    ongoing_trials: List[ClinicalTrial] = Field(default_factory=list, description="List of active clinical trials")
+    completed_trials: List[ClinicalTrial] = Field(default_factory=list, description="List of completed clinical trials")
+    regulatory_updates: List[RegulatoryUpdate] = Field(default_factory=list, description="List of regulatory milestones")
 
 class DeveloperFinancialStatus(BaseModel):
-    ownership_type: str = Field(..., description="Public/Private status")
-    funding: str = Field(..., description="Details of funding rounds")
-    revenue: Optional[str] = Field(None, description="Annual revenue data")
-    licensing_deals: List[LicensingDeal] = Field(default_factory=list)
-    disclosed_investments: List[Investment] = Field(default_factory=list)
+    """Model for company financial status."""
+    ownership_type: str = Field(default="Company ownership type not available")
+    funding: str = Field(default="Funding information not available")
+    revenue: str = Field(default="Revenue information not available")
+    licensing_deals: List[LicensingDeal] = Field(default_factory=list, description="List of licensing agreements")
+    disclosed_investments: List[Investment] = Field(default_factory=list, description="List of known investments")
 
 class BiotechAssetReport(BaseModel):
-    drug_name: str = Field(..., description="Name of the drug asset")
-    developer_organization: Optional[str] = Field(None, description="Name of the developer organization")
+    """Complete report model."""
+    drug_name: str
+    developer_organization: str = Field(default="Developer organization not specified")
     overview: Overview
     mechanism_of_action: MechanismOfAction
     clinical_activity: ClinicalActivity
-    developer_financial_status: DeveloperFinancialStatus 
+    developer_financial_status: DeveloperFinancialStatus
+
+    class Config:
+        """Model configuration."""
+        validate_assignment = True
+        extra = "forbid"
+        str_strip_whitespace = True 

@@ -34,6 +34,20 @@ env/
 .DS_Store
 
 # Project specific
+api-keys/
+api-keys
+BiotechAgentPrompt.txt
+*.docx
+*.doc
+*.pdf
+*.sqlite3
+*.log
+
+# Temp files
+*.tmp
+*~
+
+# Project specific
 .env
 *.log
 *.sqlite3 

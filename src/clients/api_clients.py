@@ -12,6 +12,7 @@ import json
 import asyncio
 from contextlib import asynccontextmanager
 import logging
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -134,16 +135,96 @@ class PubMedClient:
 class ExaClient:
     def __init__(self):
         self.client = Exa(api_key=os.getenv("EXA_API_KEY"))
+        if not os.getenv("EXA_API_KEY"):
+            logger.error("EXA_API_KEY not found in environment variables")
     
     async def search_company_info(self, company_name: str) -> Dict[str, Any]:
         """Search for company information using Exa.ai."""
         try:
-            async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
-                # Implement company info search
-                return {"company_name": company_name, "info": "Sample company info"}
+            if not self.client:
+                logger.error("Exa client not properly initialized")
+                return {
+                    "company_name": company_name,
+                    "info": "Error: Exa client not initialized",
+                    "sources": []
+                }
+            
+            # Create search query for company information
+            query = f"""
+            Find detailed information about {company_name}, including:
+            - Company type (public/private)
+            - Funding history
+            - Revenue information
+            - Recent company news and developments
+            - Market position in biotech/pharma
+            Focus on financial and business aspects.
+            """
+            
+            # Perform the search and get SearchResponse object
+            search_response = self.client.search(
+                query,
+                num_results=5,
+                use_autoprompt=True
+            )
+            
+            # Initialize response structure
+            processed_info = {
+                "company_name": company_name,
+                "info": "No information found",
+                "sources": [],
+                "recent_developments": []
+            }
+            
+            # Check if search_response exists and has results attribute
+            if not search_response or not hasattr(search_response, 'results'):
+                return processed_info
+            
+            # Get results from the SearchResponse object
+            results = search_response.results
+            if not results:
+                return processed_info
+                
+            # Process each result
+            for result in results:
+                if not result:
+                    continue
+                    
+                # Add source information
+                source_info = {}
+                
+                # Safely get attributes
+                source_info["title"] = getattr(result, 'title', 'No title')
+                source_info["url"] = getattr(result, 'url', '')
+                
+                if hasattr(result, 'published_date'):
+                    source_info["date"] = result.published_date
+                
+                processed_info["sources"].append(source_info)
+                
+                # Get text content if available
+                text_content = getattr(result, 'text', '')
+                if text_content:
+                    processed_info["recent_developments"].append(text_content[:500])
+            
+            # Create summary from developments
+            if processed_info["recent_developments"]:
+                processed_info["info"] = "\n\n".join([
+                    f"Source: {source['title']}\n{dev[:200]}..."
+                    for source, dev in zip(
+                        processed_info["sources"][:3],
+                        processed_info["recent_developments"][:3]
+                    )
+                ])
+            
+            return processed_info
+            
         except Exception as e:
-            print(f"Error searching company info: {e}")
-            return {}
+            logger.error(f"Error searching company info via Exa.ai: {str(e)}")
+            return {
+                "company_name": company_name,
+                "info": "Error retrieving company information",
+                "sources": []
+            }
 
 class TavilySearchClient:
     def __init__(self):
@@ -152,9 +233,74 @@ class TavilySearchClient:
     async def search_licensing_deals(self, company_name: str, drug_name: str) -> List[Dict[str, Any]]:
         """Search for licensing deals and investments using Tavily."""
         try:
-            async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
-                # Implement licensing deals search
-                return [{"deal": "Sample licensing deal"}]
+            # Create specific queries for different aspects
+            queries = [
+                f"{company_name} {drug_name} licensing deal announcement",
+                f"{company_name} {drug_name} partnership agreement",
+                f"{company_name} funding round investment biotech"
+            ]
+            
+            all_results = []
+            for query in queries:
+                # Use Tavily's search API with correct parameters according to docs
+                response = self.client.search(  # Removed await since it's synchronous
+                    query=query,
+                    search_depth="advanced",
+                    include_domains=[
+                        "fiercebiotech.com",
+                        "biospace.com",
+                        "evaluate.com",
+                        "bloomberg.com",
+                        "reuters.com"
+                    ],
+                    max_results=3,
+                    include_answer=True,
+                    include_raw_content=True
+                )
+                
+                if response and "results" in response:
+                    all_results.extend(response["results"])
+            
+            # Process and structure the results
+            processed_deals = []
+            seen_urls = set()  # To avoid duplicates
+            
+            for result in all_results:
+                # Skip if we've seen this URL before
+                if result["url"] in seen_urls:
+                    continue
+                seen_urls.add(result["url"])
+                
+                # Extract date from the result
+                date = result.get("published_date", "Not specified")
+                
+                # Create a structured deal entry
+                deal = {
+                    "date": date,
+                    "title": result.get("title", ""),
+                    "description": result.get("content", "")[:500],  # Changed from snippet to content
+                    "url": result["url"],
+                    "source": result.get("source", "Unknown source"),
+                    "type": "licensing_deal" if "licensing" in result.get("content", "").lower() 
+                           else "investment" if "investment" in result.get("content", "").lower()
+                           else "partnership"
+                }
+                
+                # Try to extract financial values using regex
+                value_match = re.search(r'\$\s*(\d+(?:\.\d+)?)\s*(million|billion|M|B)?', 
+                                      result.get("content", ""))
+                if value_match:
+                    amount = float(value_match.group(1))
+                    multiplier = {
+                        'billion': 1e9, 'B': 1e9,
+                        'million': 1e6, 'M': 1e6
+                    }.get(value_match.group(2), 1)
+                    deal["value"] = amount * multiplier
+                
+                processed_deals.append(deal)
+            
+            return processed_deals[:5]  # Return top 5 most relevant deals
+            
         except Exception as e:
-            print(f"Error searching licensing deals: {e}")
+            logger.error(f"Error searching licensing deals via Tavily: {str(e)}")
             return [] 
