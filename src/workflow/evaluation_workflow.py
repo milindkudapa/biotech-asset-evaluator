@@ -94,6 +94,10 @@ class BiotechEvaluationWorkflow:
 
     async def retrieve_data(self, drug_name: str, company_name: str = None) -> Dict[str, Any]:
         """Retrieve data from all sources concurrently."""
+        # Treat empty string as None
+        if not company_name:
+            company_name = None
+            
         tasks = [
             self.clinical_trials_client.search_trials(drug_name),
             self.pubmed_client.search_articles(drug_name)
@@ -135,25 +139,54 @@ class BiotechEvaluationWorkflow:
         Focus on molecular pathways, targets, and biological processes.
         Format your response as JSON with 'target_pathways' and 'biology' fields."""
         
-        data_str = json.dumps(pubmed_data)
-        chunks = self._chunk_text(data_str)
+        # Extract content from pubmed_data
+        if not pubmed_data or not isinstance(pubmed_data, list):
+            return {
+                "target_pathways": "Not available",
+                "biology": "Not available"
+            }
+            
+        # Get the content from the first (and only) item
+        content = pubmed_data[0].get("content", "") if pubmed_data else ""
+        if not content:
+            return {
+                "target_pathways": "Not available",
+                "biology": "Not available"
+            }
+            
+        # Split content into manageable chunks
+        chunks = self._chunk_text(content)
         chunk_results = await self._process_chunks(chunks, system_prompt)
         
-        merged_result = {
-            "target_pathways": [],
-            "biology": []
-        }
+        # Initialize lists for collecting results
+        target_pathways = []
+        biology = []
         
+        # Process each chunk result
         for result in chunk_results:
-            if "target_pathways" in result:
-                merged_result["target_pathways"].extend(result["target_pathways"] if isinstance(result["target_pathways"], list) else [result["target_pathways"]])
-            if "biology" in result:
-                merged_result["biology"].extend(result["biology"] if isinstance(result["biology"], list) else [result["biology"]])
+            if isinstance(result, dict):
+                # Handle target_pathways
+                if "target_pathways" in result:
+                    if isinstance(result["target_pathways"], str):
+                        target_pathways.append(result["target_pathways"])
+                    elif isinstance(result["target_pathways"], list):
+                        target_pathways.extend(str(item) for item in result["target_pathways"])
+                    elif result["target_pathways"] is not None:
+                        target_pathways.append(str(result["target_pathways"]))
+                
+                # Handle biology
+                if "biology" in result:
+                    if isinstance(result["biology"], str):
+                        biology.append(result["biology"])
+                    elif isinstance(result["biology"], list):
+                        biology.extend(str(item) for item in result["biology"])
+                    elif result["biology"] is not None:
+                        biology.append(str(result["biology"]))
         
-        # Join lists into strings
+        # Return the merged results
         return {
-            "target_pathways": "; ".join(merged_result["target_pathways"]) if merged_result["target_pathways"] else "Not available",
-            "biology": "; ".join(merged_result["biology"]) if merged_result["biology"] else "Not available"
+            "target_pathways": "; ".join(target_pathways) if target_pathways else "Not available",
+            "biology": "; ".join(biology) if biology else "Not available"
         }
         
     async def analyze_clinical_activity(self, trials_data: List[Dict[str, Any]]) -> Dict[str, List]:
@@ -348,12 +381,25 @@ class BiotechEvaluationWorkflow:
         
     async def evaluate_asset(self, drug_name: str, company_name: str = None) -> BiotechAssetReport:
         """Run the evaluation workflow and generate report."""
+        # Treat empty string as None
+        if not company_name:
+            company_name = None
+            
         # Retrieve and analyze data
         raw_data = await self.retrieve_data(drug_name, company_name)
         
         moa_data = await self.analyze_mechanism_of_action(raw_data["pubmed_articles"])
         clinical_data = await self.analyze_clinical_activity(raw_data["clinical_trials"])
         overview_data = await self.generate_overview(drug_name, moa_data, clinical_data)
+        
+        # Create default financial data when not available
+        default_financial_data = {
+            "ownership_type": "Not available",
+            "funding": "Not available",
+            "revenue": "Not available",
+            "licensing_deals": [],
+            "disclosed_investments": []
+        }
         
         financial_data = None
         if company_name and raw_data["company_info"] and raw_data["licensing_deals"]:
@@ -365,11 +411,11 @@ class BiotechEvaluationWorkflow:
         # Compile report
         report = BiotechAssetReport(
             drug_name=drug_name,
-            developer_organization=company_name,
+            developer_organization=company_name if company_name else "Not available",
             overview=Overview(**overview_data),
             mechanism_of_action=MechanismOfAction(**moa_data),
             clinical_activity=ClinicalActivity(**clinical_data),
-            developer_financial_status=DeveloperFinancialStatus(**financial_data) if financial_data else None
+            developer_financial_status=DeveloperFinancialStatus(**(financial_data or default_financial_data))
         )
         
         return report 
