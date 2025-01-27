@@ -1,132 +1,156 @@
-# Biotech Asset Evaluation Agent
+# Lunartree Biotech Asset Evaluation
 
-An intelligent agent that evaluates biotech drug assets and their developer companies, providing structured reports with insights about mechanism of action, clinical activity, and financial status.
+A comprehensive system for evaluating biotech assets using AI-powered analysis of clinical trials, scientific literature, and financial data.
 
 ## Features
 
-- Automated evaluation of drug assets and biotech companies
-- Data aggregation from multiple sources:
-  - ClinicalTrials.gov for trial data
-  - PubMed for scientific literature
-  - Exa.ai for company information
-  - Tavily for licensing deals and investments
-- LLM-powered analysis using OpenAI GPT-4o
-- Structured JSON reports with comprehensive insights
-- FastAPI-based REST API
+- Clinical trial data analysis
+- Scientific literature review
+- Financial and market analysis
+- Regulatory update tracking
+- Mechanism of action analysis
+- Company financial status evaluation
 
-## Project Structure
+## Installation
 
+1. Clone the repository
+2. Create a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
-.
-├── src/
-│   ├── clients/
-│   │   └── api_clients.py      # API client implementations
-│   ├── models/
-│   │   └── schemas.py          # Pydantic models and schemas
-│   ├── workflow/
-│   │   └── evaluation_workflow.py  # LangGraph workflow
-│   └── main.py                 # FastAPI application
-├── requirements.txt            # Project dependencies
-├── .env                       # Environment variables (not tracked in git)
-└── README.md                  # Project documentation
-```
-
-## Setup
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/milindkudapa/lunartree-agent.git
-   cd lunartree-agent
-   ```
-
-2. Create and activate a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
 3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-4. Create a `.env` file with your API keys:
-   ```
-   OPENAI_API_KEY=your_key_here
-   PUBMED_API_KEY=your_key_here
-   PUBMED_EMAIL=your_email_here
-   EXA_API_KEY=your_key_here
-   TAVILY_API_KEY=your_key_here
-   ```
+## Configuration
 
-## Dependencies
+Create a `.env` file with the following API keys:
+```
+OPENAI_API_KEY=your_key_here
+EXA_API_KEY=your_key_here
+TAVILY_API_KEY=your_key_here
+```
 
-Key dependencies include:
-- httpx==0.27.2 (for API requests)
-- openai>=1.10.0 (OpenAI API client)
-- langchain>=0.1.0 (LLM framework)
-- langgraph>=0.0.10 (Workflow orchestration)
-- tavily-python>=0.2.0 (Tavily API client)
-- exa-py>=1.0.0 (Exa.ai API client)
-- biopython>=1.83 (PubMed access)
-- fastapi>=0.109.0 (API framework)
-- pydantic>=2.6.0 (Data validation)
+## Data Models
 
-## Usage
+### Clinical Trial
+```python
+ClinicalTrial:
+    - nct_id: str          # Clinical trial identifier
+    - title: str           # Trial title
+    - phase: str           # Trial phase
+    - status: str          # Current status
+    - conditions: List[str] # Medical conditions
+    - description: str     # Trial description
+```
 
-1. Start the API server:
-   ```bash
-   python -m src.main
-   ```
+### Regulatory Update
+```python
+RegulatoryUpdate:
+    - date: str           # YYYY-MM-DD format
+    - agency: str         # Regulatory agency
+    - type: str           # Update type
+    - description: str    # Update details
+```
 
-2. The API will be available at `http://localhost:8000`
+### Licensing Deal
+```python
+LicensingDeal:
+    - date: str           # Deal date
+    - parties: List[str]  # Involved parties
+    - description: str    # Deal details
+    - value: float       # Deal value in USD
+```
 
-3. Use the `/evaluate` endpoint to evaluate a drug asset:
-   ```bash
-   curl -X POST "http://localhost:8000/evaluate" \
-        -H "Content-Type: application/json" \
-        -d '{"drug_name": "example_drug", "company_name": "example_biotech"}'
-   ```
+### Investment
+```python
+Investment:
+    - date: str          # Investment date
+    - amount: float      # Amount in USD
+    - type: str          # Investment type
+    - investor: str      # Investor name
+```
 
-4. Access the API documentation at `http://localhost:8000/docs`
+### Complete Report Structure
+```python
+BiotechAssetReport:
+    - drug_name: str
+    - developer_organization: str
+    - overview: Overview
+    - mechanism_of_action: MechanismOfAction
+    - clinical_activity: ClinicalActivity
+    - developer_financial_status: DeveloperFinancialStatus
+```
 
-## API Response Format
+## API Endpoints
 
-The API returns a structured JSON report with the following sections:
+### GET /health
+Health check endpoint
 
+### POST /analyze/asset
+Analyze a biotech asset
 ```json
 {
-  "drug_name": "string",
-  "developer_organization": "string",
-  "overview": {
-    "description": "string"
-  },
-  "mechanism_of_action": {
-    "target_pathways": "string",
-    "biology": "string"
-  },
-  "clinical_activity": {
-    "ongoing_trials": [],
-    "completed_trials": [],
-    "regulatory_updates": []
-  },
-  "developer_financial_status": {
-    "ownership_type": "string",
-    "funding": "string",
-    "revenue": "string",
-    "licensing_deals": [],
-    "disclosed_investments": []
-  }
+    "drug_name": "string",
+    "developer_organization": "string"
 }
 ```
 
-## Required API Keys
+### POST /analyze/moa
+Analyze mechanism of action
+```json
+{
+    "drug_name": "string"
+}
+```
 
-The following API keys should be set in your `.env` file:
-- OpenAI API key
-- PubMed API key and email
-- Exa.ai API key
-- Tavily API key
+### POST /analyze/clinical
+Analyze clinical trial activity
+```json
+{
+    "drug_name": "string"
+}
+```
+
+### POST /analyze/financial
+Analyze developer financial status
+```json
+{
+    "company_name": "string"
+}
+```
+
+## Testing
+
+Run tests with coverage:
+```bash
+pytest --cov=src --cov-report=term-missing
+```
+
+## Data Sources
+
+- Clinical Trials: ClinicalTrials.gov API
+- Scientific Literature: PubMed API
+- Company Information: Exa.ai API
+- Licensing Deals: Tavily Search API
+
+## Error Handling
+
+The system includes comprehensive error handling with informative default values:
+- Missing trial data: "No trial data available"
+- Unknown phases: "Phase unknown"
+- Missing financial data: "Information not available"
+- Empty regulatory updates: Returns current date with "No updates found"
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
