@@ -60,9 +60,10 @@ class EvaluationRequest(BaseModel):
 async def analyze_mechanism_of_action(request: DrugRequest):
     """Analyze the mechanism of action for a drug."""
     try:
-        raw_data = await workflow.retrieve_data(request.drug_name)
-        moa_data = await workflow.analyze_mechanism_of_action(raw_data["pubmed_articles"])
-        return MechanismOfAction(**moa_data)
+        state = {"drug_name": request.drug_name, "company_name": None}
+        raw_data = await workflow.retrieve_data(state)
+        moa_data = await workflow.analyze_mechanism_of_action(raw_data)
+        return MechanismOfAction(**moa_data["moa_analysis"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing mechanism of action: {str(e)}")
 
@@ -70,9 +71,10 @@ async def analyze_mechanism_of_action(request: DrugRequest):
 async def analyze_clinical_activity(request: DrugRequest):
     """Analyze clinical trial data for a drug."""
     try:
-        raw_data = await workflow.retrieve_data(request.drug_name)
-        clinical_data = await workflow.analyze_clinical_activity(raw_data["clinical_trials"])
-        return ClinicalActivity(**clinical_data)
+        state = {"drug_name": request.drug_name, "company_name": None}
+        raw_data = await workflow.retrieve_data(state)
+        clinical_data = await workflow.analyze_clinical_activity(raw_data)
+        return ClinicalActivity(**clinical_data["clinical_analysis"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing clinical activity: {str(e)}")
 
@@ -80,15 +82,24 @@ async def analyze_clinical_activity(request: DrugRequest):
 async def analyze_financial_status(request: CompanyRequest):
     """Analyze financial status of a company."""
     try:
-        raw_data = await workflow.retrieve_data(drug_name="", company_name=request.company_name)
-        if not raw_data["company_info"] or not raw_data["licensing_deals"]:
+        state = {
+            "drug_name": "",
+            "company_name": request.company_name,
+            "raw_data": None,
+            "financial_analysis": None
+        }
+        
+        # Get raw data
+        raw_data = await workflow.retrieve_data(state)
+        state.update(raw_data)
+        
+        # Check if we have the required data
+        if not state["raw_data"]["company_info"] or not state["raw_data"]["licensing_deals"]:
             return DeveloperFinancialStatus()
         
-        financial_data = await workflow.analyze_financial_status(
-            raw_data["company_info"],
-            raw_data["licensing_deals"]
-        )
-        return DeveloperFinancialStatus(**financial_data)
+        # Analyze financial data using the state
+        financial_data = await workflow.analyze_financial_status(state)
+        return DeveloperFinancialStatus(**financial_data["financial_analysis"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing financial status: {str(e)}")
 
@@ -96,14 +107,29 @@ async def analyze_financial_status(request: CompanyRequest):
 async def generate_drug_overview(request: DrugRequest):
     """Generate an overview for a drug."""
     try:
-        # Get mechanism of action and clinical data first
-        raw_data = await workflow.retrieve_data(request.drug_name)
-        moa_data = await workflow.analyze_mechanism_of_action(raw_data["pubmed_articles"])
-        clinical_data = await workflow.analyze_clinical_activity(raw_data["clinical_trials"])
+        state = {
+            "drug_name": request.drug_name,
+            "company_name": None,
+            "moa_analysis": None,
+            "clinical_analysis": None,
+            "overview": None
+        }
         
-        # Generate overview
-        overview_data = await workflow.generate_overview(request.drug_name, moa_data, clinical_data)
-        return Overview(**overview_data)
+        # Get raw data
+        raw_data = await workflow.retrieve_data(state)
+        state.update(raw_data)
+        
+        # Get mechanism of action analysis
+        moa_result = await workflow.analyze_mechanism_of_action(state)
+        state.update(moa_result)
+        
+        # Get clinical activity analysis
+        clinical_result = await workflow.analyze_clinical_activity(state)
+        state.update(clinical_result)
+        
+        # Generate overview using the updated state
+        overview_data = await workflow.generate_overview(state)
+        return Overview(**overview_data["overview"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating overview: {str(e)}")
 
@@ -111,8 +137,9 @@ async def generate_drug_overview(request: DrugRequest):
 async def get_clinical_trials(request: DrugRequest):
     """Get raw clinical trial data for a drug."""
     try:
-        raw_data = await workflow.retrieve_data(request.drug_name)
-        return raw_data["clinical_trials"]
+        state = {"drug_name": request.drug_name, "company_name": None}
+        raw_data = await workflow.retrieve_data(state)
+        return raw_data["raw_data"]["clinical_trials"]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving clinical trials: {str(e)}")
 
@@ -120,8 +147,9 @@ async def get_clinical_trials(request: DrugRequest):
 async def get_pubmed_articles(request: DrugRequest):
     """Get raw PubMed article data for a drug."""
     try:
-        raw_data = await workflow.retrieve_data(request.drug_name)
-        return raw_data["pubmed_articles"]
+        state = {"drug_name": request.drug_name, "company_name": None}
+        raw_data = await workflow.retrieve_data(state)
+        return raw_data["raw_data"]["pubmed_articles"]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving PubMed articles: {str(e)}")
 
