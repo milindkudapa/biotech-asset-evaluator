@@ -1,6 +1,6 @@
-# Lunartree Biotech Asset Evaluation
+# Biotech Asset Evaluator
 
-A comprehensive system for evaluating biotech assets using AI-powered analysis of clinical trials, scientific literature, and financial data.
+A comprehensive AI-powered system for evaluating biotech assets through analysis of clinical trials, scientific literature, and financial data. The system uses LangGraph for workflow orchestration and integrates multiple data sources to provide detailed insights.
 
 ## Features
 
@@ -11,14 +11,28 @@ A comprehensive system for evaluating biotech assets using AI-powered analysis o
 - Mechanism of action analysis
 - Company financial status evaluation
 
+## Architecture
+
+The system uses a state-based workflow architecture powered by LangGraph:
+- FastAPI for RESTful endpoints
+- LangGraph for workflow orchestration
+- OpenAI GPT-4 for analysis
+- Multiple data sources integration (ClinicalTrials.gov, PubMed, Exa.ai, Tavily)
+
 ## Installation
 
 1. Clone the repository
+```bash
+git clone https://github.com/milindkudapa/biotech-asset-evaluator.git
+cd biotech-asset-evaluator
+```
+
 2. Create a virtual environment:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
+
 3. Install dependencies:
 ```bash
 pip install -r requirements.txt
@@ -31,6 +45,8 @@ Create a `.env` file with the following API keys:
 OPENAI_API_KEY=your_key_here
 EXA_API_KEY=your_key_here
 TAVILY_API_KEY=your_key_here
+PUBMED_API_KEY=your_key_here
+CLINICAL_TRIALS_CONTACT_EMAIL=your_email_here
 ```
 
 ## Data Models
@@ -86,27 +102,17 @@ BiotechAssetReport:
 
 ## API Endpoints
 
-### GET /health
-Health check endpoint
+### Analysis Endpoints
 
-### POST /analyze/asset
-Analyze a biotech asset
-```json
-{
-    "drug_name": "string",
-    "developer_organization": "string"
-}
-```
-
-### POST /analyze/moa
-Analyze mechanism of action
+#### POST /analyze/moa
+Analyze mechanism of action for a drug
 ```json
 {
     "drug_name": "string"
 }
 ```
 
-### POST /analyze/clinical
+#### POST /analyze/clinical
 Analyze clinical trial activity
 ```json
 {
@@ -114,10 +120,47 @@ Analyze clinical trial activity
 }
 ```
 
-### POST /analyze/financial
-Analyze developer financial status
+#### POST /analyze/financial
+Analyze company financial status
 ```json
 {
+    "company_name": "string"
+}
+```
+
+#### POST /analyze/overview
+Generate comprehensive drug overview
+```json
+{
+    "drug_name": "string"
+}
+```
+
+### Data Endpoints
+
+#### POST /data/trials
+Get raw clinical trial data
+```json
+{
+    "drug_name": "string"
+}
+```
+
+#### POST /data/pubmed
+Get raw PubMed article data
+```json
+{
+    "drug_name": "string"
+}
+```
+
+### Evaluation Endpoint
+
+#### POST /evaluate
+Comprehensive asset evaluation
+```json
+{
+    "drug_name": "string",
     "company_name": "string"
 }
 ```
@@ -154,4 +197,8 @@ The system includes comprehensive error handling with informative default values
 
 ## License
 
-MIT License 
+MIT License
+
+## Authors
+
+- Milind Kudapa 
