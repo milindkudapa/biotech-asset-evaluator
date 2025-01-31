@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import date
-from pydantic import BaseModel, Field, constr, confloat
+from pydantic import BaseModel, Field, constr, confloat, field_validator
 
 class ClinicalTrial(BaseModel):
     """Model for a clinical trial."""
@@ -26,7 +26,25 @@ class LicensingDeal(BaseModel):
     date: str = Field(default="Date not disclosed")
     parties: List[str] = Field(default_factory=lambda: ["Parties not disclosed"])
     description: str = Field(default="No licensing deal details available")
-    value: Optional[float] = Field(default=None, description="Deal value in USD")
+    value: Optional[float] = Field(default=None, description="Deal value in USD, None if not disclosed")
+
+    @field_validator('value', mode='before')
+    @classmethod
+    def validate_value(cls, v):
+        """Handle undisclosed or invalid values."""
+        if v is None or isinstance(v, float):
+            return v
+        if isinstance(v, str) and v.lower() in ['not disclosed', 'undisclosed', 'n/a', '', 'none']:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+
+    class Config:
+        """Model configuration."""
+        validate_assignment = True
+        arbitrary_types_allowed = True
 
 class Investment(BaseModel):
     """Model for an investment."""
@@ -57,6 +75,35 @@ class DeveloperFinancialStatus(BaseModel):
     revenue: str = Field(default="Revenue information not available")
     licensing_deals: List[LicensingDeal] = Field(default_factory=list, description="List of licensing agreements")
     disclosed_investments: List[Investment] = Field(default_factory=list, description="List of known investments")
+
+    @field_validator('licensing_deals', mode='before')
+    @classmethod
+    def validate_licensing_deals(cls, v):
+        """Pre-process licensing deals to handle undisclosed values."""
+        if not v:
+            return []
+        processed_deals = []
+        for deal in v:
+            if isinstance(deal, dict):
+                # Handle the value field specifically
+                if 'value' in deal:
+                    value = deal['value']
+                    if isinstance(value, str) and value.lower() in ['not disclosed', 'undisclosed', 'n/a', '', 'none']:
+                        deal['value'] = None
+                    elif not isinstance(value, (float, type(None))):
+                        try:
+                            deal['value'] = float(value)
+                        except (ValueError, TypeError):
+                            deal['value'] = None
+                processed_deals.append(deal)
+            else:
+                processed_deals.append(deal)
+        return processed_deals
+
+    class Config:
+        """Model configuration."""
+        validate_assignment = True
+        arbitrary_types_allowed = True
 
 class BiotechAssetReport(BaseModel):
     """Complete report model."""
