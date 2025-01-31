@@ -9,6 +9,12 @@ from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 import json
 import logging
+import multiprocessing
+import subprocess
+import sys
+import time
+from pathlib import Path
+from utils.logging_config import setup_logging
 
 # Disable SSL verification globally
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -170,6 +176,131 @@ async def health_check():
     """Check if the API is running."""
     return {"status": "healthy"}
 
+def run_fastapi():
+    """Run the FastAPI backend server."""
+    try:
+        logger.info("Starting FastAPI server...")
+        subprocess.run(
+            ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to start FastAPI server: {str(e)}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        logger.info("FastAPI server stopped by user")
+    except Exception as e:
+        logger.error(f"Unexpected error starting FastAPI server: {str(e)}")
+        sys.exit(1)
+
+def run_streamlit():
+    """Run the Streamlit frontend."""
+    try:
+        logger.info("Starting Streamlit server...")
+        subprocess.run(
+            ["streamlit", "run", "src/streamlit_app.py", "--server.port", "8501"],
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to start Streamlit server: {str(e)}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        logger.info("Streamlit server stopped by user")
+    except Exception as e:
+        logger.error(f"Unexpected error starting Streamlit server: {str(e)}")
+        sys.exit(1)
+
+def check_dependencies():
+    """Check if all required dependencies are installed."""
+    try:
+        import uvicorn
+        import fastapi
+        import streamlit
+        import httpx
+        logger.info("All required dependencies are installed")
+        return True
+    except ImportError as e:
+        logger.error(f"Missing dependency: {str(e)}")
+        print("Please install required dependencies:")
+        print("pip install fastapi uvicorn streamlit httpx")
+        return False
+
+def check_environment():
+    """Check if environment is properly configured."""
+    required_env = [
+        "EX_AI_API_KEY",
+        "TAVILY_API_KEY"
+    ]
+    
+    missing_env = [env for env in required_env if not os.getenv(env)]
+    
+    if missing_env:
+        logger.error(f"Missing environment variables: {', '.join(missing_env)}")
+        print("Please set the following environment variables:")
+        for env in missing_env:
+            print(f"- {env}")
+        return False
+    
+    logger.info("Environment variables are properly configured")
+    return True
+
+def main():
+    """Main function to run both servers."""
+    logger.info("Starting Biotech Asset Evaluator...")
+    
+    # Check dependencies and environment
+    if not check_dependencies() or not check_environment():
+        sys.exit(1)
+    
+    # Create processes for each server
+    api_process = multiprocessing.Process(target=run_fastapi)
+    streamlit_process = multiprocessing.Process(target=run_streamlit)
+    
+    try:
+        # Start both servers
+        api_process.start()
+        logger.info("FastAPI process started")
+        
+        # Wait a bit for FastAPI to initialize
+        time.sleep(2)
+        
+        streamlit_process.start()
+        logger.info("Streamlit process started")
+        
+        # Print access information
+        print("\n" + "="*50)
+        print("Biotech Asset Evaluator is running!")
+        print("="*50)
+        print("Access the application at:")
+        print("- Frontend: http://localhost:8501")
+        print("- API docs: http://localhost:8000/docs")
+        print("\nPress Ctrl+C to stop the servers")
+        print("="*50 + "\n")
+        
+        # Wait for processes to complete
+        api_process.join()
+        streamlit_process.join()
+        
+    except KeyboardInterrupt:
+        logger.info("Shutting down servers...")
+        
+        # Terminate processes
+        api_process.terminate()
+        streamlit_process.terminate()
+        
+        # Wait for processes to terminate
+        api_process.join()
+        streamlit_process.join()
+        
+        logger.info("Servers shut down successfully")
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        
+        # Ensure processes are terminated
+        api_process.terminate()
+        streamlit_process.terminate()
+        
+        sys.exit(1)
+
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    main() 
