@@ -14,7 +14,22 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from utils.logging_config import setup_logging
+
+# Add the src directory to Python path
+current_dir = Path(__file__).resolve().parent
+src_dir = current_dir.parent
+sys.path.append(str(src_dir))
+
+from src.utils.logging_config import setup_logging
+from src.workflow.evaluation_workflow import BiotechEvaluationWorkflow
+from src.models.schemas import (
+    BiotechAssetReport,
+    Overview,
+    MechanismOfAction,
+    ClinicalActivity,
+    DeveloperFinancialStatus
+)
+from src.clients.api_clients import ClinicalTrialsClient, PubMedClient, ExaClient, TavilySearchClient
 
 # Disable SSL verification globally
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -23,21 +38,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Configure httpx to not verify SSL
 httpx.DEFAULT_CERTS_FILE = None
 
-from .workflow.evaluation_workflow import BiotechEvaluationWorkflow
-from .models.schemas import (
-    BiotechAssetReport,
-    Overview,
-    MechanismOfAction,
-    ClinicalActivity,
-    DeveloperFinancialStatus
-)
-from .clients.api_clients import ClinicalTrialsClient, PubMedClient, ExaClient, TavilySearchClient
-
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Set up logging
+loggers = setup_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -181,7 +186,7 @@ def run_fastapi():
     try:
         logger.info("Starting FastAPI server...")
         subprocess.run(
-            ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+            ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
             check=True
         )
     except subprocess.CalledProcessError as e:
@@ -197,8 +202,10 @@ def run_streamlit():
     """Run the Streamlit frontend."""
     try:
         logger.info("Starting Streamlit server...")
+        # Use absolute path for streamlit app
+        streamlit_path = os.path.join(src_dir, "streamlit_app.py")
         subprocess.run(
-            ["streamlit", "run", "src/streamlit_app.py", "--server.port", "8501"],
+            ["streamlit", "run", streamlit_path, "--server.port", "8501"],
             check=True
         )
     except subprocess.CalledProcessError as e:
